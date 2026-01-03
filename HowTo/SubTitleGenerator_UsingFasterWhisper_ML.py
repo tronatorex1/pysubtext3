@@ -17,10 +17,8 @@ import pathlib
 import re
 
 # variables
-input_video = rf"C:\TMP\x.mp4"
-input_video = rf"C:\ALEX\Torrents\Three Kings (1999)\Three.Kings.1999.720p.BrRip.x264.YIFY.mkv"
+input_video = rf"C:\ALEX\Torrents\Why the Empire All Sound British in Star Wars 9999.mp4"
 input_video_name = str(re.findall(r"^.*\d\d\d\d", input_video)[0])
-#input_video_name = input_video.replace(".mp4", "")
 
 def extract_audio():
     print(f"   * 1 Extracting audio from video as '.wav' file...", end="")

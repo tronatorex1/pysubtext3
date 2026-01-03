@@ -1,0 +1,165 @@
+"""
+https://www.youtube.com/watch?v=-zopCT_qYn8
+
+Pasos a tomar en cuenta:
+1. instala ffmpeg --> ffmpeg-2025-06-23-git-e6298e0759-full_build_2.tar/gzip
+    1.1 crea folder en c:\ffmpeg y extrae del tar/gzip
+    1.2 crea una var entorno windows user/system PATH = c:\ffmpeg\bin (dónde está descargado en tar/gzip completo)
+
+2. descarga un video o película --> usa yt-dl.exe <url> para descargar un video, o usa un mkv/avi/mp4
+3. extrae su audio en mp3 o m4a --> https://www.gumlet.com/learn/ffmpeg-extract-audio/
+    ej: ffmpeg -i  input.mp3  -map 0:a -acodec libmp3lame  _out_.mp4 <-- extracts and decodes with lame mp3 driver
+
+4. con el audio, ejecutar el código abajo (sustituye variables de source audio y out format = srt/vtt)
+5. test: ejecutar el vídeo y arrastra en él, el srt/vtt file creado aquí, para ver si sincroniza el audio vs subtítulo
+"""
+import tkinter as tk
+from tkinterdnd2 import DND_FILES, TkinterDnD
+import time as tm
+import sys
+import os
+
+def format_time(seconds):
+    hours = int(seconds // 3600)
+    seconds = seconds % 3600
+    minutes = int(seconds // 60)
+    seconds = seconds % 60
+    milliseconds = int(round((seconds - int(seconds)) * 1000))
+    seconds = int(seconds)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+
+# Create a TkinterDnD window (required for drag-and-drop)
+root = TkinterDnD.Tk()
+root.title("Subtitles generator - Drag and Drop File Here")
+root.geometry("400x200")
+
+# Variable to hold the file path
+dropped_file_path = tk.StringVar()
+
+# Label to display the file path
+label = tk.Label(root, text="Drag and drop a file here", bg="lightgrey", width=40, height=5)
+label.pack(padx=10, pady=10, expand=False)
+
+# Status message label (bottom)
+status_label = tk.Label(root, text="", bg="#f0f0f0", fg="grey", font=("Arial", 10))
+status_label.pack(side="bottom", pady=10)
+
+# Function to handle drop event
+def drop(event):
+    # Clean path (removes braces if present on Windows)
+    path = event.data.strip("{}")
+    dropped_file_path.set(path)
+    label.config(text=f"File path:\n{path}")
+    print(f"File path captured: {path}")  # You can use the variable here
+
+# Bind the drop event to the label
+label.drop_target_register(DND_FILES)
+label.dnd_bind('<<Drop>>', drop)
+
+#########################################################################################################
+# Function to run when button is clicked
+def process_file():
+    path = dropped_file_path.get()
+    if path:
+        print(f"Processing file: {path}")
+
+        # 1 Proceso para extraer el audio de un video ya descragado localmente
+        import subprocess
+        import os
+        source = path  # actual video path and file name
+        path = os.path.split(source)[0]
+        video = source  # os.path.join(path, file)  #"C:/TMP/Mindfulness for Anxiety.mp4"
+        audio = video.replace(os.path.splitext(video)[1],".mp3")
+        
+        # extract audio file from movie/video:
+        print(f" - Extracting audio (.mp3) from original video file...Please wait...",end="", flush=True)
+        print('>> DEBUG: starting ffmpeg extraction', flush=True)
+        
+        #---------
+        try:
+            ffmpeg_exe = "ffmpeg"  # Assumes ffmpeg is in PATH env variable
+        except Exception as e:
+            raise RuntimeError("Failed to obtain ffmpeg executable. Check installation or try adding ffmpeg to your system PATH.") from e   
+        
+        res = subprocess.call([rf'D:\ffmpeg-2025-06-23\bin\ffmpeg.exe','-i',video,'-map','0:a','-acodec','libmp3lame',audio],shell=True)
+        print(f'>> DEBUG: ffmpeg finished with return code {res}', flush=True)
+        #---------
+        
+        if (res == 0):
+            print(f" - Extracting audio (.mp3) from original video file...Please wait... [OK] ", flush=True)  # print('Res:', res)
+        else:
+            print('>> DEBUG: ffmpeg reported non-zero exit code', flush=True)
+
+        # 2 Proceso para extraer el texto del audio y guardarlo en formato SRT, en la misma ruta dónde yace el video--------------------------------------------------------------------------------------
+        # Convert MP3 to WAV for Whisper/faster-whisper
+        wav_audio = audio.replace('.mp3', '.wav')
+        print('>> DEBUG: converting extracted MP3 to WAV for transcription...', flush=True)
+        try:
+            res_conv = subprocess.call([rf'D:\ffmpeg-2025-06-23\bin\ffmpeg.exe','-i',audio,wav_audio,'-y'], shell=True)
+            print(f'>> DEBUG: mp3->wav conversion exit code {res_conv}', flush=True)
+            if res_conv == 0 and os.path.exists(wav_audio):
+                audio_for_transcribe = wav_audio
+            else:
+                print('>> DEBUG: conversion failed, will attempt to transcribe original MP3', flush=True)
+                audio_for_transcribe = audio
+        except Exception as e:
+            print('>> DEBUG: exception during mp3->wav conversion:', e, flush=True)
+            audio_for_transcribe = audio
+
+        try:
+            from faster_whisper import WhisperModel
+        except ModuleNotFoundError:
+            print('faster-whisper not found; installing via pip...', flush=True)
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'faster-whisper'], stdout=subprocess.DEVNULL)
+            from faster_whisper import WhisperModel
+
+        # extract text from audio file using faster-whisper
+        print(f" - Preparing faster-whisper model...Please wait...",end="", flush=True)
+        print('>> DEBUG: before loading faster-whisper model', flush=True)
+        try:
+            model = WhisperModel(model_size_or_path="small.en", device="cpu", compute_type="int8")
+        except Exception as e:
+            print('>> ERROR: failed to load faster-whisper model:', e, flush=True)
+            import traceback
+            traceback.print_exc()
+            return
+        print('>> DEBUG: faster-whisper model loaded', flush=True)
+        print(f" [OK]", flush=True)
+        print(f" - Transcribing...Please wait...",end="", flush=True)
+        print('>> DEBUG: starting transcription', flush=True)
+        try:
+            segments, info = model.transcribe(audio_for_transcribe)
+            print('>> DEBUG: transcription finished', flush=True)
+            print(f" [OK]", flush=True)
+        except Exception as e:
+            print('>> ERROR: transcription failed with exception:', flush=True)
+            import traceback
+            traceback.print_exc()
+            return
+
+        # Write SRT file from segments
+        srt_file = os.path.join(path, os.path.splitext(os.path.basename(video))[0] + ".srt")
+        print(f" - Writing transcription to {srt_file}...", end="", flush=True)
+        try:
+            with open(srt_file, "w", encoding="utf-8") as f:
+                for idx, seg in enumerate(segments, start=1):
+                    start = format_time(seg.start)
+                    end = format_time(seg.end)
+                    text = seg.text.strip()
+                    f.write(f"{idx}\n{start} --> {end}\n{text}\n\n")
+            print(' [OK]', flush=True)
+        except Exception as e:
+            print('>> ERROR: failed to write SRT file:', e, flush=True)
+            import traceback
+            traceback.print_exc()
+        tm.sleep(1)
+        print(" -------------------------- Process completed -------------------------- ", flush=True)
+    else:
+        print(" X - No file selected.")
+
+# Button to call another function
+button = tk.Button(root, text="Process File", command=process_file, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), padx=100, pady=5)
+button.pack(pady=1)
+
+# Start the GUI loop
+root.mainloop()

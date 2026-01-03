@@ -6,34 +6,33 @@ import math
 import subprocess
 import sys
 import importlib
+from faster_whisper import WhisperModel
+import pathlib
+import re
+#import Deco2 # used to time the operation's duration
+import imageio_ffmpeg
+
+"""
+Run this in case you want to automate the import of missing libraries
+
 try:
     import imageio_ffmpeg
 except ModuleNotFoundError:
     print("imageio-ffmpeg not found; installing via pip...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "imageio-ffmpeg"], stdout=subprocess.DEVNULL)
     imageio_ffmpeg = importlib.import_module("imageio_ffmpeg")
-from faster_whisper import WhisperModel
-import pathlib
-import re
-
+"""    
+    
 # variables
 input_video = rf"C:\ALEX\Torrents\Why the Empire All Sound British in Star Wars 9999.mp4"
 input_video_name = str(re.findall(r"^.*\d\d\d\d", input_video)[0])
 
 def extract_audio():
-    print(f"   * 1 Extracting audio from video as '.wav' file...", end="")
-    extracted_audio = f"{input_video_name}.wav"
-    try:
-        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception as e:
-        raise RuntimeError("Failed to obtain ffmpeg executable from imageio-ffmpeg. Check installation or try running 'pip install --upgrade imageio-ffmpeg'.") from e
+    print(f"   * 1 Extracting audio from video as '.mp3' file...", end="")
+    extracted_audio = f"{input_video_name}.mp3"
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     cmd = [ffmpeg_exe, "-i", input_video, "-vn", "-ac", "1", "-ar", "16000", extracted_audio, "-y"]
-    try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        raise RuntimeError("ffmpeg failed to extract audio. Ensure the input file is valid and ffmpeg supports the format.")
-    if not pathlib.Path(extracted_audio).exists():
-        raise RuntimeError("Failed to create extracted audio file.")
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f" [OK]")
     return extracted_audio
 
@@ -76,6 +75,7 @@ def generate_subtitle_file(language,segments):
     print(f" [OK]")
     return subtitle_file
 
+#@Deco2.timeit
 def run():
     print(f" * Faster Whisper Lib: extracts texts from audio files (from movie files)...")
     print(f" File = {input_video}")
@@ -83,7 +83,6 @@ def run():
     language, segments = transcribe(audio=extracted_audio)
     generate_subtitle_file(language=language, segments=segments)
     print(f" * [DONE!]")
-
 
 if __name__ == '__main__':
     run()
